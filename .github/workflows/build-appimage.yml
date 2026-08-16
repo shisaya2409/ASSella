@@ -1,0 +1,60 @@
+name: Build ASSella AppImage
+
+on:
+  workflow_dispatch:        # manual trigger: Actions tab -> "Run workflow"
+  push:
+    branches: [ beta ]
+    paths:
+      - 'src/**'
+      - 'requirements.txt'
+      - 'scripts/build-appimage.sh'
+      - '.github/workflows/build-appimage.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq jq curl file
+
+      - name: Build AppImage
+        run: |
+          chmod +x scripts/build-appimage.sh
+          ./scripts/build-appimage.sh
+        env:
+          WORK: /tmp/assella_build
+
+      - name: Smoke test (headless web mode)
+        run: |
+          set -euxo pipefail
+          # Extract instead of mounting (CI has no FUSE)
+          ./ASSella.AppImage --appimage-extract >/dev/null
+          cd squashfs-root
+          QT_QPA_PLATFORM=offscreen timeout 45 ./AppRun --headless >/tmp/assella.log 2>&1 &
+          PID=$!
+          sleep 30
+          if ! kill -0 $PID 2>/dev/null; then
+            echo "SMOKE FAIL: process died"; tail -50 /tmp/assella.log; exit 1
+          fi
+          # Web UI (headless) should answer on its default port 8765
+          if curl -fsS --max-time 5 http://127.0.0.1:8765/ >/dev/null; then
+            echo "SMOKE OK: headless web UI responded on :8765"
+          else
+            echo "SMOKE WARN: process alive but :8765 not reachable"
+            tail -30 /tmp/assella.log
+          fi
+          kill $PID 2>/dev/null || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ASSella-AppImage
+          path: ASSella.AppImage
+          if-no-files-found: error
