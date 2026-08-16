@@ -34,7 +34,7 @@ jobs:
         if: failure()
         run: |
           if [ -f /tmp/build-output.txt ]; then
-            LOG="$(tail -c 4000 /tmp/build-output.txt)"
+            LOG="$(tail -c 6000 /tmp/build-output.txt)"
             LOG="${LOG//'%'/'%25'}"
             LOG="${LOG//$'\n'/'%0A'}"
             echo "::error::$LOG"

@@ -86,10 +86,26 @@ if [ ! -x "$APP_DIR/bin/.venv/bin/python$PY_VERSION" ]; then
             exit 1
         fi
         echo "    resolved: $PY_URL"
-        curl -fSL --retry 3 -o "$PYTHON_TGZ" "$PY_URL"
+        # Runner CDN egress is flaky: retry ALL errors (incl. mid-transfer resets
+        # which plain --retry ignores), resume partial files, and verify the gzip
+        # after downloading. -sS keeps the log clean (no \r meter noise) so any
+        # real error is clearly visible in CI annotations.
+        for attempt in 1 2 3 4 5; do
+            if curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -C - -sS \
+                -o "$PYTHON_TGZ" "$PY_URL"; then
+                break
+            fi
+            rc=$?
+            echo "    download attempt $attempt failed (curl exit $rc) — retrying..."
+            sleep 3
+        done
+        if ! gzip -t "$PYTHON_TGZ" 2>/dev/null; then
+            echo "ERROR: python-build-standalone tarball is missing or corrupt: $PYTHON_TGZ"
+            exit 1
+        fi
+        mkdir -p "$APP_DIR/bin/.venv"
+        tar -xzf "$PYTHON_TGZ" -C "$APP_DIR/bin/.venv" --strip-components=1
     fi
-    mkdir -p "$APP_DIR/bin/.venv"
-    tar -xzf "$PYTHON_TGZ" -C "$APP_DIR/bin/.venv" --strip-components=1
 fi
 PYTHON="$APP_DIR/bin/.venv/bin/python$PY_VERSION"
 echo "==> Interpreter: $("$PYTHON" -V 2>&1) ($PYTHON)"
