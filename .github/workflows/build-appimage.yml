@@ -26,10 +26,27 @@ jobs:
 
       - name: Build AppImage
         run: |
+          set -o pipefail
           chmod +x scripts/build-appimage.sh
-          ./scripts/build-appimage.sh
-        env:
-          WORK: /tmp/assella_build
+          ./scripts/build-appimage.sh 2>&1 | tee /tmp/build-output.txt
+
+      - name: Surface build error (annotation)
+        if: failure()
+        run: |
+          if [ -f /tmp/build-output.txt ]; then
+            LOG="$(tail -c 4000 /tmp/build-output.txt)"
+            LOG="${LOG//'%'/'%25'}"
+            LOG="${LOG//$'\n'/'%0A'}"
+            echo "::error::$LOG"
+          fi
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: /tmp/build-output.txt
+          if-no-files-found: ignore
 
       - name: Smoke test (headless web mode)
         run: |

@@ -53,16 +53,26 @@ if [ ! -x "$APP_DIR/bin/.venv/bin/python$PY_VERSION" ]; then
         # Asset URLs are percent-encoded (e.g. cpython-3.13.15%2B20260814-...)
         RE="cpython-${PY_VERSION//./\\.}\.[0-9]+%2B[0-9]+-x86_64-unknown-linux-gnu-install_only\.tar\.gz"
         PY_URL=""
-        # 1) latest release (retry a few times against API rate limits)
-        for i in 1 2 3; do
-            PY_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' \
-                https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest \
-                | jq -r '.assets[].browser_download_url' 2>/dev/null \
-                | grep -E "$RE" | head -n 1)"
-            [ -n "$PY_URL" ] && break
-            sleep 2
-        done
-        # 2) fallback: search the 10 most recent releases
+        # 1) pinned known-good release (deterministic — avoids GitHub API rate
+        #    limits on shared CI runner IPs). Verified HEAD 302 on 2026-08-16.
+        PINNED="https://github.com/astral-sh/python-build-standalone/releases/download/20260814/cpython-3.13.15%2B20260814-x86_64-unknown-linux-gnu-install_only.tar.gz"
+        if curl -fsI -o /dev/null "$PINNED" 2>/dev/null; then
+            PY_URL="$PINNED"
+        else
+            echo "    (pinned release gone — resolving via GitHub API...)"
+        fi
+        # 2) latest release via API (retry a few times against rate limits)
+        if [ -z "$PY_URL" ]; then
+            for i in 1 2 3; do
+                PY_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' \
+                    https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest \
+                    | jq -r '.assets[].browser_download_url' 2>/dev/null \
+                    | grep -E "$RE" | head -n 1)"
+                [ -n "$PY_URL" ] && break
+                sleep 2
+            done
+        fi
+        # 3) fallback: search the 10 most recent releases
         if [ -z "$PY_URL" ]; then
             echo "    (latest release miss — searching recent releases...)"
             PY_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' \
