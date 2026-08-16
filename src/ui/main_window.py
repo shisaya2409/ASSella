@@ -1930,7 +1930,18 @@ class MainWindow(QMainWindow):
     def check_steam_updates_blocked(self) -> bool:
         """Check if steam updates are blocked via steam.cfg."""
         from pathlib import Path
-        possible_paths = [
+        possible_paths = []
+        # 1. Prefer the detected Steam install location (works on any platform,
+        #    not just the default Linux/Steam Deck layout).
+        try:
+            from core import steam_helpers
+            steam_install = steam_helpers.find_steam_install()
+            if steam_install:
+                possible_paths.append(Path(steam_install) / "steam.cfg")
+        except Exception:
+            pass
+        # 2. Fall back to the well-known Linux/Steam Deck locations.
+        possible_paths += [
             Path.home() / ".steam/steam/steam.cfg",
             Path.home() / ".steam/root/steam.cfg",
             Path.home() / ".local/share/Steam/steam.cfg",

@@ -642,8 +642,15 @@ def get_app_details(appid: str) -> tuple[str, Optional[str], Optional[list[str]]
 
     url = f"https://api.steamcmd.net/v1/info/{appid}"
     try:
+        from utils.retry import retry_call
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=STEAM_API_TIMEOUT) as resp:
+        with retry_call(
+            lambda: urllib.request.urlopen(req, timeout=STEAM_API_TIMEOUT),
+            attempts=3,
+            base_delay=0.5,
+            max_delay=3.0,
+            log_prefix=f"SteamCMD details {appid}",
+        ) as resp:
             res = json.loads(resp.read().decode("utf-8"))
             if res.get("status") == "success":
                 app_info = res.get("data", {}).get(appid, {})
@@ -762,8 +769,15 @@ def resolve_missing_names(config_data: dict) -> None:
 def fetch_raw_app_info(appid: str) -> Optional[dict]:
     url = f"https://api.steamcmd.net/v1/info/{appid}"
     try:
+        from utils.retry import retry_call
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=STEAM_API_TIMEOUT) as resp:
+        with retry_call(
+            lambda: urllib.request.urlopen(req, timeout=STEAM_API_TIMEOUT),
+            attempts=3,
+            base_delay=0.5,
+            max_delay=3.0,
+            log_prefix=f"SteamCMD raw {appid}",
+        ) as resp:
             res = json.loads(resp.read().decode("utf-8"))
             if res.get("status") == "success":
                 return res.get("data", {}).get(appid, {})

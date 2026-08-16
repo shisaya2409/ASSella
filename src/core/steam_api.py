@@ -125,63 +125,66 @@ def fetch_steamcmd_info(app_id: str) -> dict:
     """
     appid_str = str(app_id)
     url = f"https://api.steamcmd.net/v1/info/{appid_str}"
-    max_retries = 2
-    for attempt in range(max_retries):
-        try:
-            res = requests.get(url, timeout=5)
-            if res.status_code == 200:
-                payload = res.json()
-                if payload.get("status") == "success":
-                    app_data = payload.get("data", {}).get(appid_str, {})
-                    if app_data and isinstance(app_data, dict):
-                        depots_raw = app_data.get("depots", {}) if isinstance(app_data.get("depots"), dict) else {}
-                        branches_raw = depots_raw.get("branches", {}) if isinstance(depots_raw.get("branches"), dict) else {}
+    from utils.retry import retry_call
+    try:
+        res = retry_call(
+            lambda: requests.get(url, timeout=5),
+            attempts=3,
+            base_delay=0.5,
+            max_delay=3.0,
+            log_prefix=f"SteamCMD API {appid_str}",
+        )
+        if res is not None and res.status_code == 200:
+            payload = res.json()
+            if payload.get("status") == "success":
+                app_data = payload.get("data", {}).get(appid_str, {})
+                if app_data and isinstance(app_data, dict):
+                    depots_raw = app_data.get("depots", {}) if isinstance(app_data.get("depots"), dict) else {}
+                    branches_raw = depots_raw.get("branches", {}) if isinstance(depots_raw.get("branches"), dict) else {}
 
-                        depot_info = {}
-                        for depot_id, depot_data in depots_raw.items():
-                            if not isinstance(depot_data, dict):
-                                continue
-                            config = depot_data.get("config", {})
-                            manifests = depot_data.get("manifests", {})
-                            manifest_public = manifests.get("public", {})
-                            manifest_id = (
-                                manifest_public.get("gid")
-                                if isinstance(manifest_public, dict)
-                                else manifest_public
-                            )
-                            depot_info[depot_id] = {
-                                "name": depot_data.get("name"),
-                                "oslist": config.get("oslist"),
-                                "language": config.get("language"),
-                                "steamdeck": config.get("steamdeck") == "1",
-                                "size": None,
-                                "manifest_id": manifest_id,
-                                "manifests": depot_data.get("manifests"),
-                            }
-
-                        public_branch = branches_raw.get("public", {})
-                        build_id = public_branch.get("buildid") if isinstance(public_branch, dict) else None
-                        time_updated = public_branch.get("timeupdated") if isinstance(public_branch, dict) else None
-                        app_name = app_data.get("common", {}).get("name")
-                        installdir = app_data.get("config", {}).get("installdir")
-                        header_url = ImageFetcher.get_header_image_url(int(appid_str)) if appid_str.isdigit() else None
-
-                        return {
-                            "depots": depot_info,
-                            "branches": branches_raw,
-                            "installdir": installdir,
-                            "header_url": header_url,
-                            "buildid": build_id,
-                            "timeupdated": time_updated,
-                            "name": app_name,
+                    depot_info = {}
+                    for depot_id, depot_data in depots_raw.items():
+                        if not isinstance(depot_data, dict):
+                            continue
+                        config = depot_data.get("config", {})
+                        manifests = depot_data.get("manifests", {})
+                        manifest_public = manifests.get("public", {})
+                        manifest_id = (
+                            manifest_public.get("gid")
+                            if isinstance(manifest_public, dict)
+                            else manifest_public
+                        )
+                        depot_info[depot_id] = {
+                            "name": depot_data.get("name"),
+                            "oslist": config.get("oslist"),
+                            "language": config.get("language"),
+                            "steamdeck": config.get("steamdeck") == "1",
+                            "size": None,
+                            "manifest_id": manifest_id,
+                            "manifests": depot_data.get("manifests"),
                         }
-            else:
-                logger.debug(f"SteamCMD API returned HTTP {res.status_code} for AppID {appid_str} (attempt {attempt+1}/{max_retries})")
-        except Exception as e:
-            logger.debug(f"SteamCMD API request attempt {attempt+1}/{max_retries} failed for AppID {appid_str}: {e}")
 
-        if attempt < max_retries - 1:
-            time.sleep(0.3)
+                    public_branch = branches_raw.get("public", {})
+                    build_id = public_branch.get("buildid") if isinstance(public_branch, dict) else None
+                    time_updated = public_branch.get("timeupdated") if isinstance(public_branch, dict) else None
+                    app_name = app_data.get("common", {}).get("name")
+                    installdir = app_data.get("config", {}).get("installdir")
+                    header_url = ImageFetcher.get_header_image_url(int(appid_str)) if appid_str.isdigit() else None
+
+                    return {
+                        "depots": depot_info,
+                        "branches": branches_raw,
+                        "installdir": installdir,
+                        "header_url": header_url,
+                        "buildid": build_id,
+                        "timeupdated": time_updated,
+                        "name": app_name,
+                    }
+        else:
+            code = getattr(res, "status_code", "?") if res is not None else "?"
+            logger.debug(f"SteamCMD API returned HTTP {code} for AppID {appid_str}")
+    except Exception as e:
+        logger.debug(f"SteamCMD API request failed for AppID {appid_str}: {e}")
 
     return {}
 
