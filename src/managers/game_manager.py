@@ -73,6 +73,10 @@ class GameManager(QObject):
         self.selected_game = None
         self.filtered_games = []
 
+        # Whether a search query is currently active. Distinct from filtered_games
+        # being empty: an empty filtered_games means "no results", not "no filter".
+        self._search_active = False
+
         # O(1) lookup: appid -> game dict reference
         self._games_by_appid: dict = {}
 
@@ -124,8 +128,9 @@ class GameManager(QObject):
 
     def get_all_games(self):
         """Get all games in the library - returns sorted list"""
-        games_to_return = self.filtered_games if self.filtered_games else self.games
-        return list(games_to_return)
+        if self._search_active:
+            return list(self.filtered_games)
+        return list(self.games)
 
     def select_game(self, game_id):
         """Select a specific game"""
@@ -161,11 +166,13 @@ class GameManager(QObject):
     def search_games(self, query):
         """Search games by name or other criteria"""
         if not query:
+            self._search_active = False
             self.filtered_games = []
             self._apply_filters()
             self.library_updated.emit()
             return
 
+        self._search_active = True
         query = query.lower()
         matched_games = [
             game for game in self.games if query in game.get("game_name", "").lower()
@@ -175,6 +182,7 @@ class GameManager(QObject):
 
     def clear_filters(self):
         """Clear all applied filters"""
+        self._search_active = False
         self.filtered_games = []
         self._apply_filters()
         self.library_updated.emit()
@@ -486,6 +494,7 @@ class GameManager(QObject):
         # Reset cancel flag and set scanning state
         self._scan_cancelled = False
         self.is_scanning = True
+        self._search_active = False
 
         # Create a worker function that does the scanning
         def do_scan():
@@ -1167,6 +1176,7 @@ class GameManager(QObject):
         self.filtered_games.clear()
         self._games_by_appid.clear()
         self.selected_game = None
+        self._search_active = False
         self.library_updated.emit()
 
     @staticmethod
@@ -1213,6 +1223,7 @@ class GameManager(QObject):
         self.filtered_games.clear()
         self._games_by_appid.clear()
         self.selected_game = None
+        self._search_active = False
         self._games_to_check = []
 
     def cancel_update_checks(self):

@@ -87,7 +87,7 @@ def _build_depots_content(
         depot_id_str = str(depot_id)
         manifest_gid = all_manifests.get(depot_id_str)
         depot_info = all_depots.get(depot_id_str, {})
-        depot_size = depot_info.get("size", "0")
+        depot_size = depot_info.get("size") or "0"
 
         if manifest_gid:
             depots_content += (
@@ -149,8 +149,8 @@ def build_acf_content(
         ignored_keys = {
             "appid", "Universe", "name", "StateFlags", "installdir",
             "SizeOnDisk", "buildid", "InstalledDepots", "UserConfig",
-            "MountedConfig", "LastOwner", "TargetBuildID", "DownloadType",
-            "UpdateResult", "AutoUpdateBehavior"
+            "MountedConfig", "manifest", "size", "LastOwner", "TargetBuildID",
+            "DownloadType", "UpdateResult", "AutoUpdateBehavior"
         }
         for k, v in existing_fields.items():
             if k not in ignored_keys:
@@ -215,8 +215,24 @@ def write_acf_file(
         try:
             with open(acf_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
+            # Only capture plain key/value pairs at the AppState level (depth 1).
+            # Naively matching every "key" "value" line also grabs "manifest"/"size"
+            # fields nested inside InstalledDepots/UserConfig blocks, which would
+            # otherwise be re-emitted as bogus top-level fields.
+            depth = 0
             for line in content.splitlines():
-                match = re.match(r'^\s*"([^"]+)"\s*"([^"]*)"\s*$', line)
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                if "{" in stripped:
+                    depth += 1
+                    continue
+                if "}" in stripped:
+                    depth = max(0, depth - 1)
+                    continue
+                if depth != 1:
+                    continue
+                match = re.match(r'^"([^"]+)"\s*"([^"]*)"\s*$', stripped)
                 if match:
                     k, v = match.groups()
                     existing_fields[k] = v

@@ -216,7 +216,10 @@ class DownloadDepotsTask(QObject):
                 return
 
             self._copy_manifests_to_steam_depotcache()
-            self._cleanup_temp_files()
+            # Preserve the temp manifests directory here: _move_manifests_to_depotcache
+            # (in task_manager) needs it to stage .manifest files into the game's
+            # depotcache after this task finishes. It removes the directory itself.
+            self._cleanup_temp_files(remove_manifests=False)
             self.completed.emit()
 
         except FileNotFoundError:
@@ -326,14 +329,17 @@ class DownloadDepotsTask(QObject):
         except Exception as e:
             logger.error(f"Failed to copy manifests to central depotcache: {e}")
 
-    def _cleanup_temp_files(self):
+    def _cleanup_temp_files(self, remove_manifests: bool = True):
         """Cleans up temporary files created during the download process."""
         self.progress.emit("--- Cleaning up temporary files ---")
         temp_dir = tempfile.gettempdir()
         items_to_clean = {
             "mistwalker_keys.vdf": os.path.join(temp_dir, "mistwalker_keys.vdf"),
-            "mistwalker_manifests": os.path.join(temp_dir, "mistwalker_manifests"),
         }
+        if remove_manifests:
+            items_to_clean["mistwalker_manifests"] = os.path.join(
+                temp_dir, "mistwalker_manifests"
+            )
 
         for name, path in items_to_clean.items():
             if os.path.exists(path):
