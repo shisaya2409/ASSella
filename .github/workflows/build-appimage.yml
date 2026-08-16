@@ -21,11 +21,23 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq jq curl file desktop-file-utils \
-            libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
-            libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
-            libportaudio2 libasound2
+          set -o pipefail
+          OK=""
+          for i in 1 2 3; do
+            if sudo apt-get update -qq 2>&1 | tee /tmp/apt-update.log && \
+               sudo apt-get install -y -qq jq curl file desktop-file-utils \
+                 libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
+                 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+                 libportaudio2 libasound2 2>&1 | tee /tmp/apt-output.txt; then
+              OK=1
+              break
+            fi
+            echo "    apt attempt $i failed — retrying in 5s..."
+            sleep 5
+          done
+          [ -n "$OK" ] || { echo "apt-get failed after 3 attempts"; exit 1; }
+          command -v jq >/dev/null && command -v desktop-file-validate >/dev/null \
+            || { echo "required tools missing after apt"; exit 1; }
 
       - name: Build AppImage
         run: |
@@ -36,8 +48,11 @@ jobs:
       - name: Surface build error (annotation)
         if: failure()
         run: |
-          if [ -f /tmp/build-output.txt ]; then
-            LOG="$(tail -c 6000 /tmp/build-output.txt)"
+          LOGFILE=""
+          [ -f /tmp/build-output.txt ] && LOGFILE=/tmp/build-output.txt
+          [ -z "$LOGFILE" ] && [ -f /tmp/apt-output.txt ] && LOGFILE=/tmp/apt-output.txt
+          if [ -n "$LOGFILE" ]; then
+            LOG="$(tail -c 6000 "$LOGFILE")"
             LOG="${LOG//'%'/'%25'}"
             LOG="${LOG//$'\n'/'%0A'}"
             echo "::error::$LOG"
@@ -48,7 +63,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-diagnostics
-          path: /tmp/build-output.txt
+          path: |
+            /tmp/build-output.txt
+            /tmp/apt-output.txt
           if-no-files-found: ignore
 
       - name: Smoke test (headless web mode)
