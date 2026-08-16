@@ -287,11 +287,15 @@ if [ ! -x "$TOOL_DIR/usr/bin/appimagetool" ]; then
         echo "ERROR: appimagetool download is not an ELF binary"
         exit 1
     fi
-    # --appimage-extract unpacks to ./squashfs-root — relocate it to TOOL_DIR
-    rm -rf "$WORK/squashfs-root"
-    ( cd "$WORK" && ./appimagetool.AppImage --appimage-extract >/dev/null )
+    # Extract into a scratch subdir: --appimage-extract unpacks to ./squashfs-root,
+    # which MUST NOT collide with our AppDir (APP_DIR is also $WORK/squashfs-root).
+    SCRATCH="$WORK/appimagetool-x"
+    rm -rf "$SCRATCH"
+    mkdir -p "$SCRATCH"
+    ( cd "$SCRATCH" && ../appimagetool.AppImage --appimage-extract >/dev/null )
     rm -rf "$TOOL_DIR"
-    mv "$WORK/squashfs-root" "$TOOL_DIR"
+    mv "$SCRATCH/squashfs-root" "$TOOL_DIR"
+    rm -rf "$SCRATCH"
 fi
 TOOL="$TOOL_DIR/usr/bin/appimagetool"
 
