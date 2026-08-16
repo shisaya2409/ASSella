@@ -271,10 +271,27 @@ ln -sf accela.png "$APP_DIR/.DirIcon"
 # ---------------------------------------------------------------------------
 if [ ! -x "$TOOL_DIR/usr/bin/appimagetool" ]; then
     echo "==> Fetching appimagetool (continuous)..."
-    curl -fSL -o "$WORK/appimagetool.AppImage" \
-        https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+    rm -f "$WORK/appimagetool.AppImage"
+    for attempt in 1 2 3 4 5; do
+        if curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -C - -sS \
+            -o "$WORK/appimagetool.AppImage" \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage; then
+            break
+        fi
+        rc=$?
+        echo "    appimagetool download attempt $attempt failed (curl exit $rc) — retrying..."
+        sleep 3
+    done
     chmod +x "$WORK/appimagetool.AppImage"
+    if ! file "$WORK/appimagetool.AppImage" | grep -q ELF; then
+        echo "ERROR: appimagetool download is not an ELF binary"
+        exit 1
+    fi
+    # --appimage-extract unpacks to ./squashfs-root — relocate it to TOOL_DIR
+    rm -rf "$WORK/squashfs-root"
     ( cd "$WORK" && ./appimagetool.AppImage --appimage-extract >/dev/null )
+    rm -rf "$TOOL_DIR"
+    mv "$WORK/squashfs-root" "$TOOL_DIR"
 fi
 TOOL="$TOOL_DIR/usr/bin/appimagetool"
 
