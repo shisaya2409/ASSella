@@ -50,12 +50,33 @@ mkdir -p "$WORK"
 if [ ! -x "$APP_DIR/bin/.venv/bin/python$PY_VERSION" ]; then
     if [ ! -f "$PYTHON_TGZ" ]; then
         echo "==> Downloading relocatable CPython $PY_VERSION (python-build-standalone)..."
-        RE="cpython-${PY_VERSION//./\\.}\.[0-9]+\+[0-9]+-x86_64-unknown-linux-gnu-install_only\.tar\.gz"
-        PY_URL="$(curl -fsSL https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest \
-            | jq -r '.assets[].browser_download_url' \
-            | grep -E "$RE" | head -n 1)"
-        [ -n "$PY_URL" ] || { echo "ERROR: no python-build-standalone $PY_VERSION x86_64 asset found"; exit 1; }
-        curl -fSL -o "$PYTHON_TGZ" "$PY_URL"
+        # Asset URLs are percent-encoded (e.g. cpython-3.13.15%2B20260814-...)
+        RE="cpython-${PY_VERSION//./\\.}\.[0-9]+%2B[0-9]+-x86_64-unknown-linux-gnu-install_only\.tar\.gz"
+        PY_URL=""
+        # 1) latest release (retry a few times against API rate limits)
+        for i in 1 2 3; do
+            PY_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' \
+                https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest \
+                | jq -r '.assets[].browser_download_url' 2>/dev/null \
+                | grep -E "$RE" | head -n 1)"
+            [ -n "$PY_URL" ] && break
+            sleep 2
+        done
+        # 2) fallback: search the 10 most recent releases
+        if [ -z "$PY_URL" ]; then
+            echo "    (latest release miss — searching recent releases...)"
+            PY_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' \
+                https://api.github.com/repos/astral-sh/python-build-standalone/releases?per_page=10 \
+                | jq -r '.[].assets[].browser_download_url' 2>/dev/null \
+                | grep -E "$RE" | head -n 1)"
+        fi
+        if [ -z "$PY_URL" ]; then
+            echo "ERROR: no python-build-standalone $PY_VERSION x86_64 asset found"
+            echo "  (regex: $RE)"
+            exit 1
+        fi
+        echo "    resolved: $PY_URL"
+        curl -fSL --retry 3 -o "$PYTHON_TGZ" "$PY_URL"
     fi
     mkdir -p "$APP_DIR/bin/.venv"
     tar -xzf "$PYTHON_TGZ" -C "$APP_DIR/bin/.venv" --strip-components=1
