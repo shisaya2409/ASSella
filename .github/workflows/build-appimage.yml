@@ -22,7 +22,10 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq jq curl file
+          sudo apt-get install -y -qq jq curl file desktop-file-utils \
+            libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+            libportaudio2 libasound2
 
       - name: Build AppImage
         run: |
